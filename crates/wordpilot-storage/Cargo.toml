@@ -1,0 +1,18 @@
+[package]
+name = "wordpilot-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLite-backed personal dictionary for WordPilot (spec Phase 1D)."
+
+[dependencies]
+wordpilot-core = { workspace = true }
+wordpilot-autocomplete = { workspace = true }
+wordpilot-ranking = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

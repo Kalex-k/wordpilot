@@ -7,6 +7,7 @@ members = [
     "crates/wordpilot-autocomplete",
     "crates/wordpilot-protocol",
     "crates/wordpilot-daemon",
+    "crates/wordpilot-storage",
 ]
 
 [workspace.package]
@@ -22,6 +23,7 @@ wordpilot-dictionary = { path = "crates/wordpilot-dictionary" }
 wordpilot-ranking = { path = "crates/wordpilot-ranking" }
 wordpilot-autocomplete = { path = "crates/wordpilot-autocomplete" }
 wordpilot-protocol = { path = "crates/wordpilot-protocol" }
+wordpilot-storage = { path = "crates/wordpilot-storage" }
 
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
@@ -33,6 +35,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [profile.release]
 lto = "thin"

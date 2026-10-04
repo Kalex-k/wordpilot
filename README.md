@@ -13,18 +13,37 @@ The autocomplete path never touches the network and never calls an LLM.
 
 ## Status
 
-**Phase 1A is complete and working.** `wordpilot-test-client` drives the daemon
-over a Unix socket and gets ranked German and English candidates back.
+**Phase 1A and Phase 1D (personal dictionary) are complete and working.**
+`wordpilot-test-client` drives the daemon over a Unix socket and gets ranked
+German and English candidates back, and accepted candidates are learned and
+persisted across restarts.
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 1A | workspace, daemon, socket protocol, de/en dictionaries, prefix autocomplete, ranking, test CLI | **done** |
 | 1B | Fcitx 5 addon, candidate popup, keyboard selection, commit | **not started** — needs `fcitx5` + headers installed |
 | 1C | LanguageTool, Grammar/Natural/Rewrite/Continue, AI provider, selection UI | protocol defined, engines not implemented |
-| 1D | SQLite personal dictionary, language hotkeys, privacy blacklist, systemd | blacklist and systemd unit done; learning is interface-only |
+| 1D | SQLite personal dictionary, language hotkeys, privacy blacklist, systemd | **personal dictionary done**; blacklist and systemd unit done; language hotkeys are Fcitx-side (Phase 1B) |
 
 Requests for Phase 1C features return a `unsupported` error rather than a
 fabricated answer.
+
+```sh
+$ wordpilot-test-client complete --lang de bew
+ 1. bewegung  0.274  Frequency
+ 2. bewegt    0.273  Frequency
+ 3. bewegen   0.272  Frequency
+
+$ for i in $(seq 1 15); do wordpilot-test-client accept --lang de --app firefox bewerben; done
+
+$ wordpilot-test-client complete --lang de bew
+ 1. bewerben  0.558  Personal     <- learned, outranks raw corpus frequency
+ 2. bewegung  0.274  Frequency
+ 3. bewegt    0.273  Frequency
+```
+
+This survives a daemon restart: the personal dictionary is a SQLite file at
+`$XDG_DATA_HOME/wordpilot/personal.sqlite`.
 
 ## Build
 
@@ -130,6 +149,7 @@ frontend only.
 | `wordpilot-ranking` | `CandidateRanker` over configurable weighted signals |
 | `wordpilot-autocomplete` | the engine, plus the `PersonalVocabulary`, `ContextPredictor` and `LanguageDetector` interfaces |
 | `wordpilot-protocol` | wire messages and newline-delimited JSON framing |
+| `wordpilot-storage` | SQLite-backed `PersonalVocabulary` implementation (Phase 1D) |
 | `wordpilot-daemon` | socket server, state, and the three binaries |
 
 Hunspell, LanguageTool, SQLite and any particular LLM all sit behind traits;
@@ -170,9 +190,10 @@ These are real gaps, documented rather than faked (spec §60):
 - **No next-word prediction.** `ContextPredictor` exists and is wired in, but
   no n-gram model ships, so an empty prefix produces nothing. There is
   deliberately no hardcoded German preposition table standing in for a model.
-- **No personal learning yet.** `PersonalVocabulary` is wired in and
-  `AcceptCandidate` is accepted and acknowledged, but the SQLite implementation
-  is Phase 1D, so acceptances are currently discarded.
+- **Personal learning has no size cap or CLI eviction yet.** The SQLite
+  dictionary grows without bound and there is no `wordpilot dictionary forget`
+  command, only a library-level `remove_word`. Fine for an MVP, worth fixing
+  before this is used for months.
 - **`ß` does not case-fold to `ss`.** `char::to_lowercase` leaves it alone, so
   typing `strasse` will not find `Straße`. Typing `straß` will.
 - **Grammar and AI are not implemented.** Phase 1C.
@@ -201,6 +222,7 @@ cargo test --workspace
 cargo build --release
 ```
 
-172 tests, covering prefix extraction, Unicode and umlaut handling, affix
+190 tests, covering prefix extraction, Unicode and umlaut handling, affix
 expansion, ranking, language detection, config parsing, protocol
-serialisation, socket framing and the full client-to-daemon vertical.
+serialisation, socket framing, the SQLite personal dictionary and the full
+client-to-daemon vertical.

@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
-use wordpilot_autocomplete::{
-    AutocompleteEngine, HeuristicLanguageDetector, NoContextPredictor, NoPersonalDictionary,
-};
+use wordpilot_autocomplete::{AutocompleteEngine, HeuristicLanguageDetector, NoContextPredictor};
 use wordpilot_core::config::Config;
 use wordpilot_daemon::{loader, server::Server, state::DaemonState};
 
@@ -67,12 +65,11 @@ async fn main() -> anyhow::Result<()> {
         None => config.socket_path()?,
     };
 
+    let personal = loader::load_personal_dictionary(&config);
     let engine = AutocompleteEngine::new(
         config,
         outcome.resources,
-        // SQLite personal learning is Phase 1D; until then ranking uses
-        // frequency and prefix quality only.
-        Arc::new(NoPersonalDictionary),
+        personal,
         Arc::new(NoContextPredictor),
         Arc::new(HeuristicLanguageDetector::default()),
     );
