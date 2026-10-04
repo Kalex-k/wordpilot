@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/wordpilot-core",
+    "crates/wordpilot-dictionary",
+    "crates/wordpilot-ranking",
+    "crates/wordpilot-autocomplete",
+    "crates/wordpilot-protocol",
+    "crates/wordpilot-daemon",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dukk/wordpilot"
+
+[workspace.dependencies]
+wordpilot-core = { path = "crates/wordpilot-core" }
+wordpilot-dictionary = { path = "crates/wordpilot-dictionary" }
+wordpilot-ranking = { path = "crates/wordpilot-ranking" }
+wordpilot-autocomplete = { path = "crates/wordpilot-autocomplete" }
+wordpilot-protocol = { path = "crates/wordpilot-protocol" }
+
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+encoding_rs = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time", "sync"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,33 @@
+# systemd *user* service (spec §49).
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/wordpilot.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#
+# Then enable it yourself. Nothing in this repository enables it for you.
+#   systemctl --user enable --now wordpilot.service
+
+[Unit]
+Description=WordPilot autocomplete and writing-assistant daemon
+Documentation=https://github.com/dukk/wordpilot
+# The socket lives in $XDG_RUNTIME_DIR, which exists once the user session does.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/wordpilot-daemon
+Restart=on-failure
+RestartSec=2
+# The daemon sees everything the user types, so it gets no more access than it
+# needs.
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=graphical-session.target

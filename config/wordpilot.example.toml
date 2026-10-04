@@ -1,0 +1,110 @@
+# WordPilot configuration.
+#
+# Copy to $XDG_CONFIG_HOME/wordpilot/config.toml (usually
+# ~/.config/wordpilot/config.toml). Every value below is the built-in default,
+# so an absent config file behaves exactly like this one. Unknown keys are a
+# hard error rather than being silently ignored, which catches typos.
+
+[general]
+# Language used when detection is off or inconclusive: "de", "en" or "en-GB".
+default_language = "de"
+# Allow the "auto" language mode. A manual hotkey choice always wins over
+# detection.
+auto_language_detection = true
+# Socket path. Commented out means $XDG_RUNTIME_DIR/wordpilot/daemon.sock,
+# which is correct on any normal systemd system. Do not point this at /tmp.
+# socket_path = "/run/user/1000/wordpilot/daemon.sock"
+
+[autocomplete]
+enabled = true
+# How many candidates the popup shows. A client cannot ask for more than this.
+max_candidates = 5
+# Prefixes shorter than this produce nothing, so the popup does not flash on
+# the first keystroke of every word.
+min_prefix_length = 2
+# Frontend debounce in milliseconds. Keep this small; the engine itself needs
+# well under a millisecond.
+debounce_ms = 25
+# Offer spelling corrections when a prefix matches no word at all. Corrections
+# are reported as a distinct source and are never applied automatically.
+spell_correction = true
+
+[ranking]
+# Weights for the ranking signals. These are normalised internally, so raising
+# one does not rescale the others. All must be non-negative and at least one
+# must be greater than zero.
+global_frequency_weight = 0.35
+personal_frequency_weight = 0.30
+context_weight = 0.20
+recency_weight = 0.10
+application_weight = 0.05
+# Rewards an exact-case match and a short completion. Without this, German
+# nouns are swamped by their lowercase verb homographs.
+prefix_quality_weight = 0.15
+# Half-life of the recency signal, in seconds. Default is one week.
+recency_half_life_secs = 604800.0
+
+[dictionaries]
+# Languages loaded at startup. Loading is the only expensive step, so keep
+# this to the languages you actually type.
+languages = ["de", "en"]
+# Extra directories searched before the XDG and system defaults
+# (~/.local/share/wordpilot/dictionaries, /usr/share/hunspell,
+# /usr/share/myspell/dicts).
+search_paths = []
+# Extra directories searched for "<lang>_50k.txt" frequency lists before
+# ~/.local/share/wordpilot/frequency.
+frequency_paths = []
+
+[privacy]
+# Master switch for the personal dictionary. With this off, nothing you type
+# is ever written to disk.
+learning_enabled = true
+# Trust the input method's password-field hint and disable WordPilot entirely
+# for those fields.
+password_field_detection = true
+# Same for fields flagged as otherwise sensitive.
+sensitive_field_detection = true
+
+[applications]
+# WordPilot is completely inactive in these. Matched case-insensitively
+# against the process or desktop-file name the input method reports.
+disabled = [
+    "keepassxc",
+    "org.keepassxc.KeePassXC",
+    "1password",
+    "bitwarden",
+]
+
+[grammar]
+enabled = true
+provider = "languagetool"
+# A local LanguageTool server. Nothing is sent anywhere else.
+endpoint = "http://127.0.0.1:8081"
+timeout_ms = 2000
+
+[ai]
+# Remote AI is opt-in. Off by default.
+enabled = false
+provider = "openai-compatible"
+# Any OpenAI-compatible server: Ollama, llama.cpp, LM Studio, or a remote API.
+endpoint = "http://127.0.0.1:11434/v1"
+model = "mistral:latest"
+# Name of the environment variable holding the API key. The key itself is
+# never written in this file and never logged.
+api_key_env = "WORDPILOT_AI_API_KEY"
+timeout_ms = 30000
+# Upper bound on how much surrounding text is sent. Never the whole document.
+max_context_chars = 1000
+
+[hotkeys]
+# Handled by the Fcitx addon, not by the daemon.
+ai = "Ctrl+Alt+Space"
+language_german = "Super+Alt+D"
+language_english = "Super+Alt+E"
+language_auto = "Super+Alt+A"
+
+[logging]
+level = "info"
+# Logs what you type. A debugging escape hatch; leave this off.
+log_user_text = false

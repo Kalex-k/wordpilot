@@ -1,0 +1,7 @@
+/target
+*.sqlite
+*.sqlite-journal
+
+# internal working notes, not for publication
+/docs/ARCHITECTURE.ru.md
+/.idea

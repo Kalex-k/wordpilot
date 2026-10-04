@@ -1,0 +1,10 @@
+[package]
+name = "wordpilot-ranking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Configurable candidate ranking for WordPilot."
+
+[dependencies]
+wordpilot-core = { workspace = true }
