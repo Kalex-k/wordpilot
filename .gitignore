@@ -4,4 +4,6 @@
 
 # internal working notes, not for publication
 /docs/ARCHITECTURE.ru.md
+/docs/RUNNING.ru.md
 /.idea
+/fcitx/wordpilot-addon/build
