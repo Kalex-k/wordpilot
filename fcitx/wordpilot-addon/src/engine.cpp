@@ -100,7 +100,7 @@ std::vector<fcitx::InputMethodEntry> WordPilotEngine::listInputMethods() {
     // handled daemon-side via `SetLanguage`/hotkeys, not as separate Fcitx
     // IMs -- that would make switching language a full IM switch, which is
     // heavier than the hotkeys the spec actually asks for).
-    entries.emplace_back("wordpilot", "WordPilot", "", "wordpilot");
+    entries.emplace_back("wordpilot", "WordPilot", "", "wordpilot-addon");
     entries.back().setNativeName("WordPilot").setIcon("input-keyboard");
     return entries;
 }
