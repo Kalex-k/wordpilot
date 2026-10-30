@@ -90,6 +90,13 @@ private:
     fcitx::Instance *instance_;
     SocketClient socket_;
     fcitx::FactoryFor<WordPilotState> factory_;
+    // Registered in the constructor so the three language hotkeys work
+    // regardless of which input method is currently active -- Super+Alt+D
+    // must switch WordPilot's language even while "Keyboard - US" is the
+    // active Fcitx engine, not only while WordPilot itself is (spec §2: the
+    // hotkeys are global, not scoped to one input method). The handle must
+    // outlive the watch; destroying it unregisters the callback.
+    std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>> hotkeyHandle_;
 };
 
 class WordPilotEngineFactory : public fcitx::AddonFactory {

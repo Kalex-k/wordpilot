@@ -107,6 +107,33 @@ WordPilotEngine::WordPilotEngine(fcitx::Instance *instance)
     : instance_(instance),
       factory_([](fcitx::InputContext &) { return new WordPilotState; }) {
     instance_->inputContextManager().registerProperty("wordpilotState", &factory_);
+
+    // PostInputMethod: runs after whatever input method is currently active
+    // has had its turn, so this never steals a key from, say, a Pinyin
+    // engine's own composition -- but it still fires even when the active
+    // engine is "Keyboard - US", which is the whole point (spec §2's hotkeys
+    // switch WordPilot's language globally, not only while WordPilot is the
+    // active input method).
+    hotkeyHandle_ = instance_->watchEvent<fcitx::EventType::InputContextKeyEvent>(
+        fcitx::EventWatcherPhase::PostInputMethod, [this](fcitx::KeyEvent &event) {
+            if (event.isRelease() || event.filtered()) {
+                return;
+            }
+            const auto &key = event.key();
+            auto *ic = event.inputContext();
+            auto *s = state(ic);
+
+            if (key.check(kHotkeyGerman)) {
+                switchLanguage(ic, s, "de");
+                event.filterAndAccept();
+            } else if (key.check(kHotkeyEnglish)) {
+                switchLanguage(ic, s, "en");
+                event.filterAndAccept();
+            } else if (key.check(kHotkeyAuto)) {
+                switchLanguage(ic, s, "auto");
+                event.filterAndAccept();
+            }
+        });
 }
 
 std::vector<fcitx::InputMethodEntry> WordPilotEngine::listInputMethods() {
@@ -259,23 +286,10 @@ void WordPilotEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyE
     auto *s = state(ic);
     const auto &key = event.key();
 
-    // Global language-switch hotkeys, checked first so they work whether or
-    // not a word is currently being composed (spec §2).
-    if (key.check(kHotkeyGerman)) {
-        switchLanguage(ic, s, "de");
-        event.filterAndAccept();
-        return;
-    }
-    if (key.check(kHotkeyEnglish)) {
-        switchLanguage(ic, s, "en");
-        event.filterAndAccept();
-        return;
-    }
-    if (key.check(kHotkeyAuto)) {
-        switchLanguage(ic, s, "auto");
-        event.filterAndAccept();
-        return;
-    }
+    // Language hotkeys are handled by a global event watcher (see the
+    // constructor) that fires regardless of which input method is active, so
+    // they are NOT checked here -- a per-engine check would only work while
+    // WordPilot itself is the active Fcitx input method.
 
     // No active composition: only start one on a letter. Everything else
     // (digits used as shortcuts elsewhere, punctuation, navigation) passes
