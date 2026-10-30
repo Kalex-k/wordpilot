@@ -27,12 +27,21 @@ constexpr int kMinPrefixLength = 2;  // mirrors autocomplete.min_prefix_length's
 // compared to pulling in a config-file dependency for them. If these need to
 // become user-configurable from here, the config belongs in a small file this
 // addon reads directly -- not a TOML library linked just for this.
-const fcitx::Key kHotkeyGerman(FcitxKey_d,
-                                fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
-const fcitx::Key kHotkeyEnglish(FcitxKey_e,
-                                 fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
-const fcitx::Key kHotkeyAuto(FcitxKey_a,
-                              fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
+// `.normalize()` matters here: Fcitx normalizes a letter keysym to uppercase
+// once a non-Shift modifier (Alt/Super/Ctrl) is held -- confirmed by tracing
+// a real key press, which arrived as `Key(Alt+Super+E ...)`, not `...+e...`.
+// A hand-built `Key(FcitxKey_e, ...)` compares unequal to that without this
+// call, so the hotkey would be received (instance.cpp logs it) but never
+// matched by `check()`.
+const fcitx::Key kHotkeyGerman =
+    fcitx::Key(FcitxKey_d, fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt)
+        .normalize();
+const fcitx::Key kHotkeyEnglish =
+    fcitx::Key(FcitxKey_e, fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt)
+        .normalize();
+const fcitx::Key kHotkeyAuto =
+    fcitx::Key(FcitxKey_a, fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt)
+        .normalize();
 
 // One candidate word that commits itself through the owning engine when
 // selected. Fcitx calls `select()` with no other context, so the word and a
