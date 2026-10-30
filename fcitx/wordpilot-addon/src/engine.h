@@ -75,6 +75,12 @@ private:
     void commitWord(fcitx::InputContext *ic, WordPilotState *s,
                      const std::string &word);
 
+    // Sends a SetLanguage request for the daemon's *active* language (spec
+    // §2). Commits whatever was being composed first, as plain typed text,
+    // so a language switch mid-word never discards it.
+    void switchLanguage(fcitx::InputContext *ic, WordPilotState *s,
+                         const std::string &languageMode);
+
     // Commits the raw buffer unchanged -- used when the user types a
     // separator (space, punctuation) without picking a candidate.
     void commitBufferAsTyped(fcitx::InputContext *ic, WordPilotState *s);

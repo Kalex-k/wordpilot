@@ -19,6 +19,21 @@ namespace {
 constexpr int kMaxCandidates = 5;    // mirrors autocomplete.max_candidates' default
 constexpr int kMinPrefixLength = 2;  // mirrors autocomplete.min_prefix_length's default
 
+// Language-switch hotkeys (spec §2, config.toml's [hotkeys] section).
+//
+// Hardcoded to the config defaults rather than read from config.toml: this
+// adapter deliberately carries no TOML parser (spec §20 keeps the C++ layer
+// thin), and three fixed chords are a small, documented simplification
+// compared to pulling in a config-file dependency for them. If these need to
+// become user-configurable from here, the config belongs in a small file this
+// addon reads directly -- not a TOML library linked just for this.
+const fcitx::Key kHotkeyGerman(FcitxKey_d,
+                                fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
+const fcitx::Key kHotkeyEnglish(FcitxKey_e,
+                                 fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
+const fcitx::Key kHotkeyAuto(FcitxKey_a,
+                              fcitx::KeyStates(fcitx::KeyState::Super) | fcitx::KeyState::Alt);
+
 // One candidate word that commits itself through the owning engine when
 // selected. Fcitx calls `select()` with no other context, so the word and a
 // back-pointer to the engine are captured at construction.
@@ -160,6 +175,23 @@ void WordPilotEngine::commitWord(fcitx::InputContext *ic, WordPilotState *s,
     ic->updatePreedit();
 }
 
+void WordPilotEngine::switchLanguage(fcitx::InputContext *ic, WordPilotState *s,
+                                       const std::string &languageMode) {
+    // Whatever was mid-composition is committed as plain typed text first --
+    // a language switch is not the moment to silently drop or guess-correct
+    // it.
+    if (!s->buffer.empty()) {
+        commitBufferAsTyped(ic, s);
+    }
+    std::string request = std::string("{\"type\":\"set-language\",\"language\":") +
+                           JsonValue::escapeString(languageMode) + "}";
+    std::string response;
+    // Fire and forget: a dropped language switch just means the next
+    // keystroke still queries under the old language, which the user can
+    // retry. Nothing here blocks typing on the daemon answering.
+    socket_.request(request, response);
+}
+
 void WordPilotEngine::updateCandidates(fcitx::InputContext *ic, WordPilotState *s) {
     s->candidateWords.clear();
     s->selected = -1;
@@ -226,6 +258,24 @@ void WordPilotEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyE
     auto *ic = event.inputContext();
     auto *s = state(ic);
     const auto &key = event.key();
+
+    // Global language-switch hotkeys, checked first so they work whether or
+    // not a word is currently being composed (spec §2).
+    if (key.check(kHotkeyGerman)) {
+        switchLanguage(ic, s, "de");
+        event.filterAndAccept();
+        return;
+    }
+    if (key.check(kHotkeyEnglish)) {
+        switchLanguage(ic, s, "en");
+        event.filterAndAccept();
+        return;
+    }
+    if (key.check(kHotkeyAuto)) {
+        switchLanguage(ic, s, "auto");
+        event.filterAndAccept();
+        return;
+    }
 
     // No active composition: only start one on a letter. Everything else
     // (digits used as shortcuts elsewhere, punctuation, navigation) passes
