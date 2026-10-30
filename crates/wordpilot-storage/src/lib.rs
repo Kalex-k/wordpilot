@@ -1,10 +1,10 @@
-//! SQLite-backed personal dictionary (spec §5, Phase 1D).
+//! SQLite-backed personal dictionary.
 //!
 //! Implements [`wordpilot_autocomplete::PersonalVocabulary`], the interface
 //! the engine already ranks against. Nothing outside this crate links
 //! `rusqlite`: a corrupted or missing database degrades to
 //! [`wordpilot_autocomplete::NoPersonalDictionary`] at the call site, not a
-//! daemon crash (spec §44).
+//! daemon crash.
 
 mod schema;
 
@@ -50,7 +50,7 @@ const DEFAULT_HALF_LIFE_SECS: f64 = 7.0 * 24.0 * 3600.0;
 ///
 /// `&self` methods serialise through an internal [`Mutex`], matching the
 /// trait's contract that a learning write never needs an exclusive borrow on
-/// the keystroke path (spec: see `PersonalVocabulary::record_usage`).
+/// the keystroke path (see `PersonalVocabulary::record_usage`).
 pub struct PersonalDictionary {
     conn: Mutex<Connection>,
     half_life_secs: f64,
@@ -273,7 +273,7 @@ impl PersonalVocabulary for PersonalDictionary {
         // Always bump the global (cross-application) row, which is what
         // ranking's `personal_frequency` signal reads.
         Self::bump(&conn, word, &folded, language, GLOBAL_APP, now);
-        // A per-application row too, for the (Phase 2) application-specific
+        // A per-application row too, for the application-specific
         // ranking signal -- recorded now so no migration is needed later.
         if let Some(app) = application {
             if !app.is_empty() {

@@ -1,4 +1,4 @@
-//! `wordpilot`: the diagnostic CLI (spec §41).
+//! `wordpilot`: the diagnostic CLI.
 
 use std::path::PathBuf;
 
@@ -36,6 +36,11 @@ enum Command {
         #[command(subcommand)]
         command: AiCommand,
     },
+    /// Make the running daemon re-read its config file now.
+    ///
+    /// The daemon also notices edits on its own within a second; this is for
+    /// scripts and for seeing whether the new file was accepted.
+    Reload,
     /// Check every dependency and report what is wrong.
     Doctor,
 }
@@ -57,8 +62,18 @@ async fn main() -> anyhow::Result<()> {
         Some(path) => path.clone(),
         None => wordpilot_core::paths::config_file()?,
     };
-    let config =
-        Config::load(&config_path).with_context(|| format!("loading {}", config_path.display()))?;
+    // A broken config must not lock the user out of the CLI: `reload` is how
+    // they learn what the daemon thinks of the file, and `doctor` reports it.
+    let (config, config_error) = match Config::load(&config_path) {
+        Ok(config) => (config, None),
+        Err(error) => {
+            let message = error.to_string();
+            if !matches!(args.command, Command::Doctor) {
+                eprintln!("warning: {message}\nwarning: continuing with built-in defaults");
+            }
+            (Config::default(), Some(message))
+        }
+    };
     let socket = match &args.socket {
         Some(path) => path.clone(),
         None => config.socket_path()?,
@@ -76,7 +91,8 @@ async fn main() -> anyhow::Result<()> {
             ai_status(&config);
             Ok(())
         }
-        Command::Doctor => doctor(&config, &config_path, &socket).await,
+        Command::Reload => reload(&socket).await,
+        Command::Doctor => doctor(&config, &config_path, config_error.as_deref(), &socket).await,
     }
 }
 
@@ -93,9 +109,41 @@ async fn status(socket: &std::path::Path) -> anyhow::Result<()> {
             println!("language     {}", status.active_language);
             println!("autocomplete {}", onoff(status.autocomplete_enabled));
             println!("learning     {}", onoff(status.learning_enabled));
-            println!("grammar      {}", onoff(status.grammar_enabled));
-            println!("ai           {}", onoff(status.ai_enabled));
+            // Both switches exist in the config, but neither feature is in
+            // this build; printing "enabled" alone would suggest otherwise.
+            println!(
+                "grammar      {} in config, not implemented yet",
+                onoff(status.grammar_enabled)
+            );
+            println!(
+                "ai           {} in config, not implemented yet",
+                onoff(status.ai_enabled)
+            );
+            println!("config gen   {}", status.config_generation);
             Ok(())
+        }
+        other => unexpected(other),
+    }
+}
+
+async fn reload(socket: &std::path::Path) -> anyhow::Result<()> {
+    match request(socket, Request::Reload).await? {
+        Response::Reloaded(outcome) => {
+            if !outcome.changed {
+                println!("config unchanged (generation {})", outcome.generation);
+                return Ok(());
+            }
+            println!("config reloaded (generation {})", outcome.generation);
+            if outcome.dictionaries_reloaded {
+                println!("dictionaries re-read");
+            }
+            for setting in &outcome.restart_required {
+                println!("restart the daemon to apply {setting}");
+            }
+            Ok(())
+        }
+        Response::Error { message, .. } => {
+            anyhow::bail!("config rejected, the daemon keeps the previous one: {message}")
         }
         other => unexpected(other),
     }
@@ -158,23 +206,24 @@ fn ai_status(config: &Config) {
     println!("provider  {}", config.ai.provider);
     println!("endpoint  {}", config.ai.endpoint);
     println!("model     {}", config.ai.model);
-    // The key itself is never printed (spec §30, §42).
+    // The key itself is never printed.
     let key_present = std::env::var_os(&config.ai.api_key_env).is_some();
     println!(
         "api key   {} (from ${})",
         if key_present { "set" } else { "not set" },
         config.ai.api_key_env
     );
-    println!("note      AI actions are not implemented in this build (Phase 1C)");
+    println!("note      AI actions are not implemented yet");
 }
 
-/// `wordpilot doctor` (spec §41).
+/// `wordpilot doctor`.
 ///
 /// Checks everything and reports all findings rather than stopping at the
 /// first failure: the point is a complete picture of what is missing.
 async fn doctor(
     config: &Config,
     config_path: &std::path::Path,
+    config_error: Option<&str>,
     socket: &std::path::Path,
 ) -> anyhow::Result<()> {
     let mut problems = 0usize;
@@ -189,7 +238,13 @@ async fn doctor(
     };
 
     println!("config");
-    if config_path.exists() {
+    if let Some(error) = config_error {
+        check(
+            false,
+            "file",
+            format!("{error} (checks below use defaults)"),
+        );
+    } else if config_path.exists() {
         check(true, "file", format!("{}", config_path.display()));
     } else {
         // Not a failure: defaults are a working configuration.
@@ -285,30 +340,78 @@ async fn doctor(
         Some(path) => check(true, "binary", path.clone()),
         None => check(false, "binary", "fcitx5 not found in PATH".into()),
     }
-    let addon = fcitx_addon_path();
-    match &addon {
-        Some(path) => check(true, "addon", path.clone()),
+    if process_running("fcitx5") {
+        check(true, "process", "running".into());
+    } else {
+        check(false, "process", "fcitx5 is not running".into());
+    }
+    match fcitx_addon_path() {
+        Some(path) => check(true, "addon", path),
         None => check(
             false,
             "addon",
-            "wordpilot addon not installed (Phase 1B)".into(),
+            "libwordpilot.so not found in $FCITX_ADDON_DIRS or /usr/lib/fcitx5".into(),
         ),
     }
+
+    // Which variables an application needs depends on the display server:
+    // on X11 everything goes through the IM modules and XIM; on Wayland the
+    // compositor's text-input protocol is preferred and GTK_IM_MODULE is
+    // only a fallback for compositors without it.
+    let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+    let wayland = session == "wayland" || std::env::var_os("WAYLAND_DISPLAY").is_some();
+    println!(
+        "  info  {:<16} {}",
+        "session",
+        if session.is_empty() {
+            "unknown"
+        } else {
+            session.as_str()
+        }
+    );
     for var in ["GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS"] {
-        match std::env::var(var) {
-            Ok(value) if !value.is_empty() => check(true, var, value),
-            _ => check(false, var, "not set; Fcitx will not be used by apps".into()),
+        let value = std::env::var(var).unwrap_or_default();
+        match (value.is_empty(), wayland, var) {
+            (false, _, _) => check(
+                value.contains("fcitx"),
+                var,
+                if value.contains("fcitx") {
+                    value
+                } else {
+                    format!("{value} (not fcitx)")
+                },
+            ),
+            // XMODIFIERS still matters for XWayland applications.
+            (true, true, "XMODIFIERS") => check(
+                false,
+                var,
+                "not set; XWayland apps will not use Fcitx".into(),
+            ),
+            (true, true, _) => println!(
+                "  ok    {var:<16} not set (fine on Wayland if the compositor supports text-input)"
+            ),
+            (true, false, _) => check(
+                false,
+                var,
+                "not set in this shell; X11 apps started from it will not use Fcitx".into(),
+            ),
         }
     }
 
-    println!("languagetool");
-    match check_http(&config.grammar.endpoint).await {
-        Ok(()) => check(true, "endpoint", config.grammar.endpoint.clone()),
-        Err(error) => check(
-            false,
-            "endpoint",
-            format!("{} unreachable: {error}", config.grammar.endpoint),
-        ),
+    // Grammar checking is not implemented yet, so an unreachable
+    // LanguageTool is reported but not counted as a problem: nothing in this
+    // build would use it.
+    println!("languagetool (not used by this build yet)");
+    if config.grammar.enabled {
+        match check_http(&config.grammar.endpoint).await {
+            Ok(()) => check(true, "endpoint", config.grammar.endpoint.clone()),
+            Err(error) => println!(
+                "  warn  {:<16} {} unreachable: {error}",
+                "endpoint", config.grammar.endpoint
+            ),
+        }
+    } else {
+        println!("  ok    {:<16} disabled in config", "enabled");
     }
 
     println!("ai provider");
@@ -372,20 +475,32 @@ fn which(binary: &str) -> Option<String> {
         .map(|candidate| candidate.display().to_string())
 }
 
+/// Where Fcitx would load the addon from: `$FCITX_ADDON_DIRS` when set (it
+/// replaces the default), otherwise the distribution's library directory.
 fn fcitx_addon_path() -> Option<String> {
-    let candidates = [
-        PathBuf::from("/usr/lib/fcitx5/libwordpilot.so"),
-        PathBuf::from("/usr/lib64/fcitx5/libwordpilot.so"),
-    ];
-    candidates
-        .into_iter()
-        .chain(
-            wordpilot_core::paths::data_dir()
-                .ok()
-                .map(|d| d.join("fcitx5/libwordpilot.so")),
-        )
+    let dirs: Vec<PathBuf> = match std::env::var_os("FCITX_ADDON_DIRS") {
+        Some(value) if !value.is_empty() => std::env::split_paths(&value).collect(),
+        _ => vec![
+            PathBuf::from("/usr/lib/fcitx5"),
+            PathBuf::from("/usr/lib64/fcitx5"),
+            PathBuf::from("/usr/local/lib/fcitx5"),
+        ],
+    };
+    dirs.into_iter()
+        .map(|dir| dir.join("libwordpilot.so"))
         .find(|path| path.is_file())
         .map(|path| path.display().to_string())
+}
+
+/// Whether a process with this exact command name exists, read from /proc so
+/// `doctor` does not depend on `pgrep` being installed.
+fn process_running(name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        std::fs::read_to_string(entry.path().join("comm")).is_ok_and(|comm| comm.trim_end() == name)
+    })
 }
 
 fn onoff(value: bool) -> &'static str {

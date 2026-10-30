@@ -1,4 +1,4 @@
-//! The Unix domain socket listener (spec §21, §47).
+//! The Unix domain socket listener.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

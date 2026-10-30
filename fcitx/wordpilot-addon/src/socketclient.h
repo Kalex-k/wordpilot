@@ -23,8 +23,7 @@ public:
 
     // Sends one line and reads one line back. Connects lazily on first use
     // and reconnects automatically after a failure, so a daemon restart
-    // (spec §44: "daemon должен уметь перезапускаться без перезапуска Fcitx")
-    // is transparent to the caller beyond one failed request.
+    // (without restarting Fcitx) is transparent to the caller beyond one failed request.
     //
     // Returns false on any I/O failure or timeout; `response` is untouched in
     // that case. This is the single point where "is the daemon there at all"

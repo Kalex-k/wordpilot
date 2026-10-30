@@ -4,7 +4,7 @@ use crate::language::{Language, LanguageMode};
 use crate::text::TextContext;
 
 /// Where a candidate came from. The frontend may style sources differently,
-/// and spell corrections must stay distinguishable from completions (spec §8).
+/// and spell corrections must stay distinguishable from completions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CandidateSource {
@@ -44,31 +44,49 @@ impl Candidate {
 ///
 /// Carries identifiers the frontend can cheaply obtain from the input method;
 /// the core uses them only for blacklisting and per-app ranking. Note there is
-/// deliberately no window handle or X11 id here (spec §57).
+/// deliberately no window handle or X11 id here.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApplicationContext {
     /// Process or desktop-file name, e.g. `firefox`, `org.keepassxc.KeePassXC`.
     #[serde(default)]
     pub name: Option<String>,
-    /// True when the input method reports a password or otherwise sensitive
-    /// field. WordPilot disables itself entirely for these (spec §28).
+    /// True when the input method reports a field flagged as sensitive
+    /// (e.g. a credit-card or one-time-code field). WordPilot disables itself
+    /// for these when `privacy.sensitive_field_detection` is on.
     #[serde(default)]
     pub sensitive: bool,
+    /// True when the input method reports a password field. WordPilot disables
+    /// itself for these when `privacy.password_field_detection` is on.
+    #[serde(default)]
+    pub password: bool,
 }
 
 impl ApplicationContext {
     pub fn named(name: impl Into<String>) -> Self {
         Self {
             name: Some(name.into()),
-            sensitive: false,
+            ..Self::default()
         }
     }
 
     pub fn sensitive() -> Self {
         Self {
-            name: None,
             sensitive: true,
+            ..Self::default()
         }
+    }
+
+    pub fn password() -> Self {
+        Self {
+            password: true,
+            ..Self::default()
+        }
+    }
+
+    /// Whether this is a password or sensitive field at all, regardless of
+    /// configuration. Nothing typed into one is ever learned.
+    pub fn is_private_field(&self) -> bool {
+        self.sensitive || self.password
     }
 }
 
@@ -110,11 +128,11 @@ impl CompletionResponse {
 }
 
 /// Semantic transformations, performed by an LLM. Kept open for the planned
-/// `Explain`, `Shorten` and formality actions (spec §53–§55).
+/// `Explain`, `Shorten` and formality actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AiAction {
-    /// Minimal corrections only; never a stylistic rewrite (spec §12).
+    /// Minimal corrections only; never a stylistic rewrite.
     Grammar,
     /// Idiomatic phrasing, preserving meaning, register, person and tense.
     Natural,

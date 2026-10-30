@@ -1,4 +1,4 @@
-//! The Phase 1A vertical as one test (spec §61): client -> socket -> daemon ->
+//! The whole pipeline in one place: client -> socket -> daemon ->
 //! dictionary -> ranking -> response.
 //!
 //! Uses a real Unix socket in a temporary directory, so the framing,
@@ -74,6 +74,12 @@ struct Harness {
 
 impl Harness {
     async fn start(config: Config) -> Self {
+        Self::start_with(config, None).await
+    }
+
+    /// Starts a daemon that reloads from `config_path`, which the test
+    /// rewrites to simulate the user editing their config.
+    async fn start_with(config: Config, config_path: Option<std::path::PathBuf>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("daemon.sock");
 
@@ -108,7 +114,10 @@ impl Harness {
             Arc::new(NoContextPredictor),
             Arc::new(HeuristicLanguageDetector::default()),
         );
-        let state = DaemonState::new(engine, Vec::new());
+        let state = match config_path {
+            Some(path) => DaemonState::with_config_path(engine, Vec::new(), path),
+            None => DaemonState::new(engine, Vec::new()),
+        };
         let server = Server::bind(&socket).unwrap();
         let (tx, rx) = tokio::sync::oneshot::channel();
         let task = tokio::spawn(async move {
@@ -158,7 +167,7 @@ impl Harness {
 
 #[tokio::test]
 async fn the_motivating_example_works_end_to_end() {
-    // Spec §62, steps 4-8: type "bew" in German, get candidates back.
+    // Type "bew" in German, get candidates back.
     let harness = Harness::start(Config::default()).await;
     let response = harness.complete("Ich möchte mich bew", "de").await;
 
@@ -199,7 +208,6 @@ async fn affix_expansion_is_reachable_over_the_socket() {
 
 #[tokio::test]
 async fn language_switching_changes_results_for_the_same_prefix() {
-    // Spec §62, steps 14-15.
     let harness = Harness::start(Config::default()).await;
 
     let german = harness.complete("appl", "de").await;
@@ -267,7 +275,6 @@ async fn an_unavailable_language_is_declined_rather_than_accepted() {
 
 #[tokio::test]
 async fn blacklisted_and_sensitive_fields_return_nothing() {
-    // Spec §28, §29.
     let harness = Harness::start(Config::default()).await;
     let mut client = harness.client().await;
 
@@ -349,7 +356,7 @@ async fn accepting_a_candidate_is_acknowledged_even_without_learning() {
     let response = client
         .send(&Request::AcceptCandidate {
             word: "bewerben".into(),
-            language: Language::German,
+            language: LanguageMode::Fixed(Language::German),
             application: ApplicationContext::named("firefox"),
         })
         .await
@@ -359,8 +366,70 @@ async fn accepting_a_candidate_is_acknowledged_even_without_learning() {
 }
 
 #[tokio::test]
+async fn accept_with_auto_language_is_what_the_fcitx_addon_sends() {
+    let harness = Harness::start(Config::default()).await;
+    let mut client = harness.client().await;
+    let response = client
+        .send(&Request::AcceptCandidate {
+            word: "bewerben".into(),
+            language: LanguageMode::Auto,
+            application: ApplicationContext::default(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(response, Response::Accepted), "{response:?}");
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn config_changes_apply_on_reload_without_a_restart() {
+    let config_dir = tempfile::tempdir().unwrap();
+    let config_path = config_dir.path().join("config.toml");
+    std::fs::write(&config_path, "").unwrap();
+    let harness = Harness::start_with(Config::default(), Some(config_path.clone())).await;
+    assert!(harness.complete("bew", "de").await.candidates.len() > 1);
+
+    std::fs::write(
+        &config_path,
+        "[autocomplete]\nmax_candidates = 1\n[hotkeys]\nlanguage_german = \"Ctrl+Alt+G\"\n",
+    )
+    .unwrap();
+    let mut client = harness.client().await;
+    match client.send(&Request::Reload).await.unwrap() {
+        Response::Reloaded(outcome) => {
+            assert!(outcome.changed);
+            assert!(
+                !outcome.dictionaries_reloaded,
+                "dictionaries were untouched"
+            );
+            assert_eq!(outcome.generation, 1);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+    assert_eq!(harness.complete("bew", "de").await.candidates.len(), 1);
+
+    match client.send(&Request::FrontendConfig).await.unwrap() {
+        Response::FrontendConfig(frontend) => {
+            assert_eq!(frontend.generation, 1);
+            assert_eq!(frontend.max_candidates, 1);
+            assert_eq!(frontend.hotkeys.language_german, "Control+Alt+G");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    // A broken file is reported and the running config stays in effect.
+    std::fs::write(&config_path, "[autocomplete]\nmax_candidates = 0\n").unwrap();
+    match client.send(&Request::Reload).await.unwrap() {
+        Response::Error { code, .. } => assert_eq!(code, "bad-request"),
+        other => panic!("unexpected response: {other:?}"),
+    }
+    assert_eq!(harness.complete("bew", "de").await.candidates.len(), 1);
+    harness.stop().await;
+}
+
+#[tokio::test]
 async fn unimplemented_features_report_an_error_instead_of_a_fake_answer() {
-    // Spec §60: Phase 1C features must not be faked.
+    // Unimplemented features must report an error, not a fake answer.
     let harness = Harness::start(Config::default()).await;
     let mut client = harness.client().await;
     let response = client
@@ -379,7 +448,7 @@ async fn unimplemented_features_report_an_error_instead_of_a_fake_answer() {
 
 #[tokio::test]
 async fn disabling_autocomplete_does_not_break_the_daemon() {
-    // Spec §62, steps 16-17: switching a subsystem off leaves the rest alive.
+    // Switching a subsystem off leaves the rest alive.
     let mut config = Config::default();
     config.autocomplete.enabled = false;
     let harness = Harness::start(config).await;
@@ -440,7 +509,6 @@ async fn the_daemon_survives_a_client_that_disconnects_mid_request() {
 
 #[tokio::test]
 async fn the_socket_is_removed_on_shutdown_so_a_restart_is_clean() {
-    // Spec §62, step 18.
     let harness = Harness::start(Config::default()).await;
     let socket = harness.socket.clone();
     assert!(socket.exists());

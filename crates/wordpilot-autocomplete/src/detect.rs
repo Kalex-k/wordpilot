@@ -1,6 +1,6 @@
-//! Language detection for `Auto` mode (spec §38).
+//! Language detection for `Auto` mode.
 //!
-//! The rules the spec insists on: a manual choice always wins (enforced by the
+//! The rules: a manual choice always wins (enforced by the
 //! engine, which only calls a detector for `LanguageMode::Auto`), short
 //! function words like `in`, `die` and `war` are ambiguous, and the language
 //! must not flip after a single word.
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn does_not_switch_after_a_single_ambiguous_word() {
-        // The exact words the spec calls out as unsafe triggers.
+        // Short function words that exist in both languages.
         for word in ["in", "die", "war", "is", "an", "so"] {
             assert_eq!(detect(word, BOTH), None, "{word} must not decide");
         }

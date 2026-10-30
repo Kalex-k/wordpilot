@@ -12,21 +12,21 @@ pub struct WordEntry {
 
 /// A source of words for prefix completion.
 ///
-/// Implementations are expected to be cheap to query (spec §36: well under
+/// Implementations are expected to be cheap to query (well under
 /// 10 ms) and to do all loading up front, so this trait takes `&self` and is
 /// not async.
 pub trait DictionaryProvider: Send + Sync {
     fn language(&self) -> Language;
 
     /// Words starting with `prefix`, case-insensitively, at most `limit` of
-    /// them. Order is unspecified: ranking is a separate concern (spec §4).
+    /// them. Order is unspecified: ranking is a separate concern.
     fn complete(&self, prefix: &str, limit: usize) -> Vec<WordEntry>;
 
     /// Whether `word` is spelled correctly. Used to decide whether to offer
     /// corrections at all.
     fn contains(&self, word: &str) -> bool;
 
-    /// Corrections for a likely misspelling (spec §8). These must be reported
+    /// Corrections for a likely misspelling. These must be reported
     /// with `CandidateSource::SpellCorrection`, never silently applied.
     fn corrections(&self, word: &str, limit: usize) -> Vec<WordEntry>;
 

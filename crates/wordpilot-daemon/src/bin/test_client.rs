@@ -1,4 +1,4 @@
-//! `wordpilot-test-client`: drives the daemon without Fcitx (spec §46).
+//! `wordpilot-test-client`: drives the daemon without Fcitx.
 //!
 //! This is the loop the Fcitx addon will perform, reduced to a command line,
 //! so the engine can be developed and demonstrated on its own.
@@ -40,9 +40,12 @@ enum Command {
         /// Reported application name, for blacklist and ranking tests.
         #[arg(long)]
         app: Option<String>,
-        /// Treat the field as a password field.
+        /// Report the field as sensitive (privacy.sensitive_field_detection).
         #[arg(long)]
         sensitive: bool,
+        /// Report the field as a password field (privacy.password_field_detection).
+        #[arg(long)]
+        password: bool,
         #[arg(long, value_name = "N")]
         limit: Option<usize>,
         /// Text to the right of the caret.
@@ -99,6 +102,7 @@ fn build_request(command: &Command) -> anyhow::Result<Request> {
             lang,
             app,
             sensitive,
+            password,
             limit,
             after,
             text,
@@ -113,21 +117,20 @@ fn build_request(command: &Command) -> anyhow::Result<Request> {
                 application: ApplicationContext {
                     name: app.clone(),
                     sensitive: *sensitive,
+                    password: *password,
                 },
                 max_candidates: *limit,
             })
         }
         Command::Accept { lang, app, word } => {
-            let language = match parse_language(lang)? {
-                LanguageMode::Fixed(language) => language,
-                LanguageMode::Auto => bail!("accept needs a concrete language, not 'auto'"),
-            };
+            // "auto" is filed under the daemon's active language, or its
+            // default language when the active mode is auto as well.
             Request::AcceptCandidate {
                 word: word.clone(),
-                language,
+                language: parse_language(lang)?,
                 application: ApplicationContext {
                     name: app.clone(),
-                    sensitive: false,
+                    ..ApplicationContext::default()
                 },
             }
         }

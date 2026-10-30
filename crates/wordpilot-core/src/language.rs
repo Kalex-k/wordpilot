@@ -76,7 +76,7 @@ impl FromStr for Language {
 /// What the user selected, which is not the same thing as a `Language`.
 ///
 /// `Auto` is resolved by a `LanguageDetector` at request time; a manual choice
-/// always wins over detection (spec §38).
+/// always wins over detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageMode {
     Auto,

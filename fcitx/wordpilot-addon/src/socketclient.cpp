@@ -14,15 +14,20 @@ namespace wordpilot {
 namespace {
 
 // Bounds every request so a hung daemon costs one slow keystroke, not an
-// unresponsive input method (spec §36: the hot path has a hard latency
+// unresponsive input method (the hot path has a hard latency
 // budget; this is the backstop for when something upstream has gone wrong).
 constexpr int kTimeoutMs = 200;
 
 // Resolves $XDG_RUNTIME_DIR/wordpilot/daemon.sock, matching
 // wordpilot_core::paths::socket_path(). No $HOME fallback, on purpose: a
 // socket outside $XDG_RUNTIME_DIR would not be guaranteed user-private
-// (spec §47).
+//. $WORDPILOT_SOCKET overrides it, for a daemon started with
+// `--socket` or `general.socket_path` -- set it in Fcitx's environment.
 std::string defaultSocketPath() {
+    const char *explicitPath = std::getenv("WORDPILOT_SOCKET");
+    if (explicitPath && explicitPath[0] != '\0') {
+        return explicitPath;
+    }
     const char *runtimeDir = std::getenv("XDG_RUNTIME_DIR");
     if (!runtimeDir || runtimeDir[0] == '\0') {
         return {};

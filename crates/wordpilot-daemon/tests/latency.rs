@@ -1,5 +1,5 @@
-//! Latency check against the dictionaries actually installed on this machine
-//! (spec §36: under 30 ms per keystroke, ideally under 10 ms).
+//! Latency check against the dictionaries actually installed locally
+//! (budget: under 30 ms per keystroke, ideally under 10 ms).
 //!
 //! Ignored by default because it depends on installed dictionaries. Run with:
 //! `cargo test --release -p wordpilot-daemon --test latency -- --ignored --nocapture`
@@ -89,7 +89,7 @@ fn completion_stays_inside_the_latency_budget() {
     let mut total_us = 0u128;
     let mut count = 0u128;
 
-    // Warm up: the spec's budget is "after warm-up".
+    // Warm up first: the budget applies to a warm process.
     for _ in 0..3 {
         for prefix in prefixes {
             let _ = engine.complete(&request(prefix));

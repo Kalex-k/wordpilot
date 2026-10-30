@@ -1,4 +1,4 @@
-# systemd *user* service (spec §49).
+# systemd *user* service.
 #
 # Install:
 #   mkdir -p ~/.config/systemd/user
@@ -18,6 +18,9 @@ PartOf=graphical-session.target
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/wordpilot-daemon
+# The daemon also picks up config.toml edits by itself within a second;
+# `systemctl --user reload wordpilot` forces it immediately.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=2
 # The daemon sees everything the user types, so it gets no more access than it

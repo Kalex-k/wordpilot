@@ -1,7 +1,7 @@
 //! Word sources for completion.
 //!
 //! The engine depends on the [`DictionaryProvider`] trait only; Hunspell is
-//! one implementation behind it (spec §3), so it can be replaced by an
+//! one implementation behind it, so it can be replaced by an
 //! aff-expanding reader, a trie file or a remote service later.
 
 pub mod affix;

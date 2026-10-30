@@ -18,22 +18,26 @@ pub enum Request {
     /// Fast path: local prefix completion.
     Complete(CompletionRequest),
 
-    /// The user accepted a candidate; a positive learning signal (spec §39).
+    /// The user accepted a candidate; a positive learning signal.
+    ///
+    /// `language` should be the `language` of the completion response the
+    /// word came from. `"auto"` is accepted and resolved to the daemon's
+    /// active language, falling back to `general.default_language`.
     AcceptCandidate {
         word: String,
-        language: Language,
+        language: LanguageMode,
         #[serde(default)]
         application: ApplicationContext,
     },
 
-    /// Deterministic grammar check (spec §9).
+    /// Deterministic grammar check.
     Grammar(GrammarRequest),
 
-    /// One LLM transformation (spec §16).
+    /// One LLM transformation.
     Ai(AiRequest),
 
     /// All four AI actions at once, so the frontend can render four loading
-    /// rows and fill them as they arrive (spec §34).
+    /// rows and fill them as they arrive.
     AiBatch {
         text: String,
         #[serde(default)]
@@ -45,11 +49,18 @@ pub enum Request {
         application: ApplicationContext,
     },
 
-    /// Change the active language (spec §2).
+    /// Change the active language.
     SetLanguage { language: LanguageMode },
 
     /// Daemon health and loaded resources, for `wordpilot status` and `doctor`.
     Status,
+    /// The subset of the config the input-method frontend acts on itself
+    /// (hotkeys, limits, blacklist), so the addon never parses TOML and picks
+    /// up config changes without being rebuilt.
+    FrontendConfig,
+    /// Re-read the config file now. The daemon also does this on its own when
+    /// the file changes and on SIGHUP.
+    Reload,
 
     /// Round-trip check with no side effects.
     Ping,
@@ -58,8 +69,7 @@ pub enum Request {
 /// A daemon response.
 ///
 /// Errors are a response variant rather than a transport failure: a failed AI
-/// call must not tear down the connection that autocomplete is using
-/// (spec §44).
+/// call must not tear down the connection that autocomplete is using.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Response {
@@ -76,6 +86,8 @@ pub enum Response {
         language: LanguageMode,
     },
     Status(ServerStatus),
+    FrontendConfig(FrontendConfig),
+    Reloaded(ReloadOutcome),
     Pong,
     Error {
         /// Stable machine-readable code; see [`error_codes`].
@@ -109,6 +121,42 @@ pub mod error_codes {
     pub const INTERNAL: &str = "internal";
 }
 
+/// What the Fcitx addon needs from the config. Hotkeys are already in the
+/// spelling `fcitx::Key` parses; an empty string means "no hotkey".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrontendConfig {
+    /// Bumped on every successful reload, so a client can tell whether what
+    /// it cached is current.
+    pub generation: u64,
+    pub autocomplete_enabled: bool,
+    pub min_prefix_length: usize,
+    pub max_candidates: usize,
+    pub password_field_detection: bool,
+    pub sensitive_field_detection: bool,
+    pub disabled_applications: Vec<String>,
+    pub hotkeys: FrontendHotkeys,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrontendHotkeys {
+    pub language_german: String,
+    pub language_english: String,
+    pub language_auto: String,
+    pub ai: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReloadOutcome {
+    pub generation: u64,
+    /// False when the file was unchanged and nothing was rebuilt.
+    pub changed: bool,
+    /// True when `[dictionaries]` changed and the word lists were re-read.
+    pub dictionaries_reloaded: bool,
+    /// Settings that changed in the file but only take effect after a
+    /// daemon restart, e.g. `general.socket_path`.
+    pub restart_required: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerStatus {
     pub protocol_version: u32,
@@ -120,6 +168,9 @@ pub struct ServerStatus {
     pub grammar_enabled: bool,
     pub ai_enabled: bool,
     pub uptime_secs: u64,
+    /// See [`FrontendConfig::generation`].
+    #[serde(default)]
+    pub config_generation: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -261,6 +312,34 @@ mod tests {
         .unwrap();
         assert_eq!(json["type"], "error");
         assert_eq!(json["code"], "ai-disabled");
+    }
+
+    #[test]
+    fn accept_candidate_takes_auto_or_a_concrete_language() {
+        // Exactly what the Fcitx addon sends.
+        let json = r#"{"type":"accept-candidate","word":"bewerben","language":"auto"}"#;
+        match serde_json::from_str::<Request>(json).unwrap() {
+            Request::AcceptCandidate { language, .. } => assert_eq!(language, LanguageMode::Auto),
+            other => panic!("wrong variant: {other:?}"),
+        }
+        let json = r#"{"type":"accept-candidate","word":"bewerben","language":"de_DE"}"#;
+        match serde_json::from_str::<Request>(json).unwrap() {
+            Request::AcceptCandidate { language, .. } => {
+                assert_eq!(language, LanguageMode::Fixed(Language::German))
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn frontend_config_and_reload_are_bare_tags() {
+        for (json, expected) in [
+            (r#"{"type":"frontend-config"}"#, "FrontendConfig"),
+            (r#"{"type":"reload"}"#, "Reload"),
+        ] {
+            let request: Request = serde_json::from_str(json).unwrap();
+            assert!(format!("{request:?}").starts_with(expected), "{request:?}");
+        }
     }
 
     #[test]

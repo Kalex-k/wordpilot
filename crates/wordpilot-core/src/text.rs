@@ -6,7 +6,7 @@ use crate::language::Language;
 ///
 /// All offsets inside this type are *byte* offsets into the respective
 /// `String`, because that is what Rust slicing needs. Never treat them as
-/// character counts (spec §45).
+/// character counts.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextContext {
     /// Text to the left of the caret, within the current field/paragraph.
@@ -15,7 +15,7 @@ pub struct TextContext {
     /// Text to the right of the caret.
     #[serde(default)]
     pub after_cursor: String,
-    /// The user's selection, if any (spec §27).
+    /// The user's selection, if any.
     #[serde(default)]
     pub selection: Option<String>,
 }
@@ -85,7 +85,7 @@ impl TextContext {
     }
 
     /// The sentence the caret sits in, used as the AI target when there is no
-    /// selection (spec §27).
+    /// selection.
     pub fn current_sentence(&self) -> &str {
         let start = self
             .before_cursor
@@ -98,7 +98,7 @@ impl TextContext {
     }
 
     /// What the AI should operate on: the selection if present, otherwise the
-    /// current sentence. Never the whole document (spec §27).
+    /// current sentence. Never the whole document.
     pub fn ai_target(&self) -> &str {
         match self.selection.as_deref() {
             Some(selection) if !selection.trim().is_empty() => selection,

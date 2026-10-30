@@ -1,6 +1,6 @@
-//! TOML configuration (spec §31).
+//! TOML configuration.
 //!
-//! Every tunable the spec asks to keep out of code lives here: ranking
+//! Every tunable that should not be hardcoded lives here: ranking
 //! weights, hotkeys, endpoints, privacy lists. Missing files are not an
 //! error -- the defaults are a usable configuration.
 
@@ -55,9 +55,9 @@ pub struct AutocompleteConfig {
     /// Prefixes shorter than this produce no candidates, which keeps the popup
     /// from flashing on every first keystroke.
     pub min_prefix_length: usize,
-    /// Debounce applied by the frontend, in milliseconds (spec §37).
+    /// Debounce applied by the frontend, in milliseconds.
     pub debounce_ms: u64,
-    /// Offer corrections for prefixes that match no word at all (spec §8).
+    /// Offer corrections for prefixes that match no word at all.
     pub spell_correction: bool,
 }
 
@@ -141,7 +141,7 @@ impl RankingConfig {
 #[serde(deny_unknown_fields, default)]
 pub struct DictionaryConfig {
     /// Languages loaded at startup. Loading is the expensive part, so this is
-    /// kept small by default (spec §36).
+    /// kept small by default.
     pub languages: Vec<Language>,
     /// Extra directories prepended to the XDG/system search path.
     pub search_paths: Vec<PathBuf>,
@@ -178,7 +178,7 @@ impl DictionaryConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct PrivacyConfig {
-    /// Master switch for the personal dictionary (spec §5, §28).
+    /// Master switch for the personal dictionary.
     pub learning_enabled: bool,
     /// Trust the input method's "password field" hint and disable entirely.
     pub password_field_detection: bool,
@@ -199,7 +199,7 @@ impl Default for PrivacyConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ApplicationsConfig {
-    /// Applications WordPilot is entirely inactive in (spec §29).
+    /// Applications WordPilot is entirely inactive in.
     pub disabled: Vec<String>,
 }
 
@@ -251,13 +251,13 @@ impl Default for GrammarConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct AiConfig {
-    /// Remote AI is opt-in (spec §30); this defaults to off.
+    /// Remote AI is opt-in; this defaults to off.
     pub enabled: bool,
     pub provider: String,
     pub endpoint: String,
     pub model: String,
     /// Name of the environment variable holding the API key. The key itself is
-    /// never stored in, or read from, the config file (spec §30).
+    /// never stored in, or read from, the config file.
     pub api_key_env: String,
     pub timeout_ms: u64,
     pub max_context_chars: usize,
@@ -297,12 +297,99 @@ impl Default for HotkeyConfig {
     }
 }
 
+impl HotkeyConfig {
+    fn entries(&self) -> [(&'static str, &str); 4] {
+        [
+            ("ai", &self.ai),
+            ("language_german", &self.language_german),
+            ("language_english", &self.language_english),
+            ("language_auto", &self.language_auto),
+        ]
+    }
+
+    pub fn validate(&self) -> Result<(), CoreError> {
+        for (name, value) in self.entries() {
+            to_fcitx_key(value)
+                .map_err(|reason| CoreError::ConfigInvalid(format!("hotkeys.{name}: {reason}")))?;
+        }
+        Ok(())
+    }
+}
+
+/// Translates a hotkey written the way people write them (`Ctrl+Alt+Space`,
+/// `super+alt+d`) into the string `fcitx::Key` parses (`Control+Alt+space`).
+///
+/// Fcitx is strict and silent about it: `Ctrl` is not a modifier name there
+/// and is dropped without an error, and `Space` is not a keysym name, so the
+/// config spelling cannot be handed to the addon as is. An empty string means
+/// "no hotkey" and is returned unchanged.
+pub fn to_fcitx_key(spec: &str) -> Result<String, String> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return Ok(String::new());
+    }
+    let parts: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let (key, modifiers) = parts.split_last().expect("split yields at least one part");
+    if key.is_empty() {
+        return Err(format!("{spec:?} has no key after the last '+'"));
+    }
+
+    let mut out = Vec::with_capacity(parts.len());
+    for modifier in modifiers {
+        let canonical = match modifier.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => "Control",
+            "alt" => "Alt",
+            "shift" => "Shift",
+            "super" | "win" | "logo" => "Super",
+            _ => return Err(format!("unknown modifier {modifier:?} in {spec:?}")),
+        };
+        if !out.contains(&canonical) {
+            out.push(canonical);
+        }
+    }
+
+    let key = if key.chars().count() == 1 {
+        key.to_string()
+    } else {
+        match key.to_ascii_lowercase().as_str() {
+            "space" => "space".into(),
+            "tab" => "Tab".into(),
+            "enter" | "return" => "Return".into(),
+            "esc" | "escape" => "Escape".into(),
+            "backspace" => "BackSpace".into(),
+            "delete" | "del" => "Delete".into(),
+            "insert" | "ins" => "Insert".into(),
+            "home" => "Home".into(),
+            "end" => "End".into(),
+            "pageup" => "Page_Up".into(),
+            "pagedown" => "Page_Down".into(),
+            "up" => "Up".into(),
+            "down" => "Down".into(),
+            "left" => "Left".into(),
+            "right" => "Right".into(),
+            lower if lower.starts_with('f') && lower[1..].parse::<u8>().is_ok() => {
+                lower.to_ascii_uppercase()
+            }
+            // Anything else is passed through as an X keysym name
+            // (`grave`, `semicolon`, ...), which is what Fcitx expects.
+            _ => key.to_string(),
+        }
+    };
+
+    let mut result = out.join("+");
+    if !result.is_empty() {
+        result.push('+');
+    }
+    result.push_str(&key);
+    Ok(result)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct LoggingConfig {
     pub level: String,
     /// Logs the user's actual text. Off by default; this is a debugging
-    /// escape hatch, not a normal setting (spec §42).
+    /// escape hatch, not a normal setting.
     pub log_user_text: bool,
 }
 
@@ -348,6 +435,7 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), CoreError> {
         self.ranking.validate()?;
+        self.hotkeys.validate()?;
         if self.autocomplete.max_candidates == 0 {
             return Err(CoreError::ConfigInvalid(
                 "autocomplete.max_candidates must be at least 1".into(),
@@ -529,5 +617,38 @@ mod tests {
     #[test]
     fn logging_does_not_include_user_text_by_default() {
         assert!(!Config::default().logging.log_user_text);
+    }
+
+    #[test]
+    fn the_shipped_example_config_is_exactly_the_defaults() {
+        // The example claims every value in it is the built-in default; keep
+        // that true.
+        let example = include_str!("../../../config/wordpilot.example.toml");
+        assert_eq!(parse(example).unwrap(), Config::default());
+    }
+
+    #[test]
+    fn hotkeys_are_translated_to_fcitx_spelling() {
+        // Fcitx drops "Ctrl" silently and rejects "Space"; both must be fixed
+        // up before the addon sees them.
+        assert_eq!(to_fcitx_key("Ctrl+Alt+Space").unwrap(), "Control+Alt+space");
+        assert_eq!(to_fcitx_key("super+alt+d").unwrap(), "Super+Alt+d");
+        assert_eq!(to_fcitx_key(" Win + F5 ").unwrap(), "Super+F5");
+        assert_eq!(to_fcitx_key("Escape").unwrap(), "Escape");
+        assert_eq!(to_fcitx_key("").unwrap(), "");
+    }
+
+    #[test]
+    fn rejects_malformed_hotkeys() {
+        assert!(to_fcitx_key("Hyperr+D").is_err());
+        assert!(to_fcitx_key("Ctrl+").is_err());
+        let err = parse("[hotkeys]\nlanguage_german = \"Cmd+D\"\n").unwrap_err();
+        assert!(matches!(err, CoreError::ConfigInvalid(_)), "{err:?}");
+    }
+
+    #[test]
+    fn an_empty_hotkey_disables_it() {
+        let config = parse("[hotkeys]\nlanguage_auto = \"\"\n").unwrap();
+        assert_eq!(config.hotkeys.language_auto, "");
     }
 }

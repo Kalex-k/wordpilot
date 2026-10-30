@@ -71,7 +71,9 @@ public:
 
     const std::vector<JsonValue> &items() const { return array_; }
 
-    const std::string &asString(const std::string &fallback = "") const {
+    // By value: returning a reference would dangle whenever the fallback is
+    // the default-argument temporary and the result outlives the call.
+    std::string asString(const std::string &fallback = "") const {
         return type_ == JsonType::String ? string_ : fallback;
     }
     double asNumber(double fallback = 0.0) const {

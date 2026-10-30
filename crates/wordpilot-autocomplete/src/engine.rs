@@ -1,6 +1,6 @@
 //! The autocomplete engine: context in, ranked candidates out.
 //!
-//! Knows nothing about sockets, X11, Wayland or Fcitx (spec §57). Everything
+//! Knows nothing about sockets, X11, Wayland or Fcitx. Everything
 //! it needs arrives in a [`CompletionRequest`].
 
 use std::collections::HashMap;
@@ -22,13 +22,13 @@ use crate::predict::ContextPredictor;
 ///
 /// Ranking only reorders what it is given, so a prefix like `bew` must be
 /// over-fetched: taking the first five alphabetically and ranking those would
-/// never surface `bewerben` (spec §4).
+/// never surface `bewerben`.
 const RANKING_POOL: usize = 400;
 
 /// How many preceding words are used as context and for detection.
 const CONTEXT_WINDOW: usize = 4;
 
-/// Everything loaded for one language. Built once at startup (spec §36).
+/// Everything loaded for one language. Built once at startup.
 pub struct LanguageResources {
     pub dictionary: Box<dyn DictionaryProvider>,
     pub frequency: FrequencyTable,
@@ -46,7 +46,9 @@ impl LanguageResources {
 pub struct AutocompleteEngine {
     config: Config,
     ranker: CandidateRanker,
-    resources: HashMap<Language, LanguageResources>,
+    // Shared so a config-only reload can build a new engine around the same
+    // dictionaries instead of spending a second re-reading them.
+    resources: Arc<HashMap<Language, LanguageResources>>,
     personal: Arc<dyn PersonalVocabulary>,
     predictor: Arc<dyn ContextPredictor>,
     detector: Arc<dyn LanguageDetector>,
@@ -64,10 +66,31 @@ impl AutocompleteEngine {
         Self {
             config,
             ranker,
-            resources,
+            resources: Arc::new(resources),
             personal,
             predictor,
             detector,
+        }
+    }
+
+    /// A new engine with a different configuration that shares this one's
+    /// predictor and detector. `resources` replaces the loaded dictionaries
+    /// when given; `None` keeps the current ones, which is what makes a
+    /// config reload that does not touch `[dictionaries]` instant.
+    pub fn reconfigured(
+        &self,
+        config: Config,
+        resources: Option<HashMap<Language, LanguageResources>>,
+        personal: Arc<dyn PersonalVocabulary>,
+    ) -> Self {
+        let ranker = CandidateRanker::new(config.ranking.clone());
+        Self {
+            config,
+            ranker,
+            resources: resources.map_or_else(|| Arc::clone(&self.resources), Arc::new),
+            personal,
+            predictor: Arc::clone(&self.predictor),
+            detector: Arc::clone(&self.detector),
         }
     }
 
@@ -120,11 +143,12 @@ impl AutocompleteEngine {
         }
     }
 
-    /// Whether WordPilot must stay silent for this request (spec §28, §29).
+    /// Whether WordPilot must stay silent for this request.
     fn is_suppressed(&self, request: &CompletionRequest) -> bool {
         let privacy = &self.config.privacy;
-        if request.application.sensitive
-            && (privacy.password_field_detection || privacy.sensitive_field_detection)
+        let application = &request.application;
+        if (application.password && privacy.password_field_detection)
+            || (application.sensitive && privacy.sensitive_field_detection)
         {
             return true;
         }
@@ -189,7 +213,7 @@ impl AutocompleteEngine {
         }
     }
 
-    /// Next-word prediction for an empty prefix (spec §6).
+    /// Next-word prediction for an empty prefix.
     fn next_word_candidates(
         &self,
         preceding: &[&str],
@@ -271,7 +295,7 @@ impl AutocompleteEngine {
         }
 
         // Corrections only when the prefix is a plausible whole word that the
-        // dictionary rejects, and never mixed in silently (spec §8).
+        // dictionary rejects, and never mixed in silently.
         if candidates.is_empty()
             && self.config.autocomplete.spell_correction
             && prefix.chars().count() >= 4
@@ -326,10 +350,10 @@ impl AutocompleteEngine {
         })
     }
 
-    /// Records an accepted candidate as a positive signal (spec §39).
+    /// Records an accepted candidate as a positive signal.
     ///
     /// Silently does nothing when learning is off or the field was sensitive;
-    /// a password must never reach the personal dictionary (spec §28).
+    /// a password must never reach the personal dictionary.
     pub fn record_acceptance(
         &self,
         word: &str,
@@ -566,7 +590,7 @@ experience 4000
                 .language,
             Language::German
         );
-        // Same text, explicit English: the manual choice must win (spec §38).
+        // Same text, explicit English: the manual choice must win.
         assert_eq!(
             engine.complete(&request(german_context, EN)).language,
             Language::EnglishUs
@@ -626,6 +650,37 @@ experience 4000
         let mut req = request("bew", DE);
         req.application = ApplicationContext::sensitive();
         assert!(engine().complete(&req).candidates.is_empty());
+    }
+
+    #[test]
+    fn password_and_sensitive_detection_are_configured_independently() {
+        let mut password = request("bew", DE);
+        password.application = ApplicationContext::password();
+        let mut sensitive = request("bew", DE);
+        sensitive.application = ApplicationContext::sensitive();
+
+        let mut config = Config::default();
+        config.privacy.sensitive_field_detection = false;
+        let engine = engine_with(config);
+        assert!(engine.complete(&password).candidates.is_empty());
+        assert!(!engine.complete(&sensitive).candidates.is_empty());
+
+        let mut config = Config::default();
+        config.privacy.password_field_detection = false;
+        let engine = engine_with(config);
+        assert!(!engine.complete(&password).candidates.is_empty());
+        assert!(engine.complete(&sensitive).candidates.is_empty());
+    }
+
+    #[test]
+    fn reconfigured_engine_keeps_dictionaries_and_applies_new_limits() {
+        let engine = engine();
+        let mut config = Config::default();
+        config.autocomplete.max_candidates = 1;
+        let smaller = engine.reconfigured(config, None, Arc::clone(engine.personal()));
+        assert_eq!(smaller.loaded_languages(), engine.loaded_languages());
+        assert_eq!(smaller.complete(&request("bew", DE)).candidates.len(), 1);
+        assert!(engine.complete(&request("bew", DE)).candidates.len() > 1);
     }
 
     #[test]

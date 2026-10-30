@@ -1,4 +1,4 @@
-//! The daemon's wire protocol (spec §21).
+//! The daemon's wire protocol.
 //!
 //! Newline-delimited JSON over a Unix domain socket. JSON is the deliberate
 //! MVP choice: it is debuggable with `socat`, and the thin C++ Fcitx bridge
@@ -9,4 +9,7 @@ pub mod codec;
 pub mod message;
 
 pub use codec::{Framed, ProtocolError};
-pub use message::{Request, Response, ServerStatus, PROTOCOL_VERSION};
+pub use message::{
+    FrontendConfig, FrontendHotkeys, ReloadOutcome, Request, Response, ServerStatus,
+    PROTOCOL_VERSION,
+};

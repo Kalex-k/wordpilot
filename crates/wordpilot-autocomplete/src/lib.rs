@@ -1,4 +1,4 @@
-//! The fast path (spec §56): dictionary and frequency only, no network, no
+//! The fast path: dictionary and frequency only, no network, no
 //! LLM, no per-keystroke disk access.
 
 pub mod detect;

@@ -1,7 +1,7 @@
 //! Candidate ranking.
 //!
 //! Alphabetical order is useless for a prefix like `bew`, which matches
-//! hundreds of German words (spec §4). This crate combines independent
+//! hundreds of German words. This crate combines independent
 //! signals, each normalised to `[0, 1]`, using weights that live in the
 //! configuration rather than in the code.
 //!

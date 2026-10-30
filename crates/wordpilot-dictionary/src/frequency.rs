@@ -1,5 +1,5 @@
 //! Corpus frequency, the primary ranking signal before the user has taught
-//! WordPilot anything (spec §4).
+//! WordPilot anything.
 //!
 //! The on-disk format is the widely available `word<space>count` list (one
 //! entry per line, descending). Counts are converted to a score in `[0, 1]`
@@ -22,7 +22,7 @@ pub struct FrequencyTable {
 impl FrequencyTable {
     /// Looks for `<short_tag>_50k.txt`, then `<short_tag>.txt`, in each
     /// directory. A missing list is not an error: ranking degrades to the
-    /// other signals (spec §44).
+    /// other signals.
     pub fn discover(language: Language, search_paths: &[PathBuf]) -> Self {
         let names = [
             format!("{}_50k.txt", language.short_tag()),

@@ -27,7 +27,7 @@ pub enum ProtocolError {
 
 impl ProtocolError {
     /// Whether the connection is still usable. A single malformed message is
-    /// recoverable; a broken pipe is not (spec §44).
+    /// recoverable; a broken pipe is not.
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,

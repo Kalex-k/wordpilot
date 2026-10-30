@@ -1,4 +1,4 @@
-//! XDG base-directory resolution (spec §48).
+//! XDG base-directory resolution.
 //!
 //! No user-specific path is ever hardcoded; everything derives from the
 //! environment with the standard `$HOME`-relative fallbacks.
@@ -51,7 +51,7 @@ pub fn cache_dir() -> Result<PathBuf, CoreError> {
 /// `$XDG_RUNTIME_DIR/wordpilot`.
 ///
 /// There is no `$HOME` fallback on purpose: the socket must live on a
-/// user-private directory, and `/tmp` is world-readable (spec §47).
+/// user-private directory, and `/tmp` is world-readable.
 pub fn runtime_dir() -> Result<PathBuf, CoreError> {
     env_dir("XDG_RUNTIME_DIR")
         .map(|base| base.join(APP))

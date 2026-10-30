@@ -24,7 +24,7 @@ where
             Ok(None) => return Ok(()),
             Err(error) if error.is_recoverable() => {
                 // One bad frame must not drop a connection that autocomplete
-                // is using (spec §44).
+                // is using.
                 tracing::warn!(%error, "ignoring malformed request");
                 let response = Response::Error {
                     code: error_codes::BAD_REQUEST.into(),
@@ -42,7 +42,21 @@ where
             }
         };
 
-        let response = handle(&state, request);
+        let response = match request {
+            // A reload may re-read the dictionaries (about a second), which
+            // must not stall a runtime worker that other clients' keystrokes
+            // are waiting on.
+            Request::Reload => {
+                let state = Arc::clone(&state);
+                tokio::task::spawn_blocking(move || reload_response(state.reload()))
+                    .await
+                    .unwrap_or_else(|error| Response::Error {
+                        code: error_codes::INTERNAL.into(),
+                        message: format!("reload task failed: {error}"),
+                    })
+            }
+            request => handle(&state, request),
+        };
         if let Err(error) = framed.write(&response).await {
             tracing::debug!(%error, "client disconnected before the reply was sent");
             return Ok(());
@@ -56,6 +70,10 @@ pub fn handle(state: &DaemonState, request: Request) -> Response {
         Request::Ping => Response::Pong,
 
         Request::Status => Response::Status(state.status()),
+
+        Request::FrontendConfig => Response::FrontendConfig(state.frontend_config()),
+
+        Request::Reload => reload_response(state.reload()),
 
         Request::Complete(mut request) => {
             // `Auto` on the wire means "use whatever the user selected", which
@@ -73,9 +91,9 @@ pub fn handle(state: &DaemonState, request: Request) -> Response {
         } => {
             state.engine().record_acceptance(
                 &word,
-                language,
+                state.resolve_for_learning(language),
                 application.name.as_deref(),
-                application.sensitive,
+                application.is_private_field(),
             );
             Response::Accepted
         }
@@ -84,18 +102,41 @@ pub fn handle(state: &DaemonState, request: Request) -> Response {
             language: state.set_active_language(language),
         },
 
-        // Phase 1C. The protocol carries these already so the Fcitx addon can
+        // Not implemented yet. The protocol carries these already so the Fcitx addon can
         // be written against the final shape, but the daemon does not pretend
-        // to answer them (spec §60).
+        // to answer them.
         Request::Grammar(_) => unsupported("grammar checking"),
         Request::Ai(_) | Request::AiBatch { .. } => unsupported("AI actions"),
+    }
+}
+
+fn reload_response(outcome: Result<wordpilot_protocol::ReloadOutcome, String>) -> Response {
+    match outcome {
+        Ok(outcome) => {
+            if outcome.changed {
+                tracing::info!(
+                    generation = outcome.generation,
+                    dictionaries = outcome.dictionaries_reloaded,
+                    restart_required = ?outcome.restart_required,
+                    "config reloaded"
+                );
+            }
+            Response::Reloaded(outcome)
+        }
+        Err(message) => {
+            tracing::error!(%message, "config reload failed; keeping the running config");
+            Response::Error {
+                code: error_codes::BAD_REQUEST.into(),
+                message,
+            }
+        }
     }
 }
 
 fn unsupported(what: &str) -> Response {
     Response::Error {
         code: error_codes::UNSUPPORTED.into(),
-        message: format!("{what} is not implemented in this build (Phase 1C)"),
+        message: format!("{what} is not implemented yet"),
     }
 }
 

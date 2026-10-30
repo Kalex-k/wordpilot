@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQLite-backed personal dictionary for WordPilot (spec Phase 1D)."
+description = "SQLite-backed personal dictionary for WordPilot."
 
 [dependencies]
 wordpilot-core = { workspace = true }

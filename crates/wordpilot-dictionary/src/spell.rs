@@ -2,7 +2,7 @@
 //!
 //! Intentionally small: corrections are a convenience, and the result is
 //! always surfaced as [`CandidateSource::SpellCorrection`] so the user decides
-//! (spec §8). Nothing here is ever applied automatically.
+//!. Nothing here is ever applied automatically.
 
 use crate::provider::WordEntry;
 
@@ -53,7 +53,7 @@ where
 /// Optimal-string-alignment distance, abandoned once it exceeds `cutoff`.
 ///
 /// Operates on `char` slices, never bytes, so `ä` counts as one edit rather
-/// than two (spec §45).
+/// than two.
 fn damerau_levenshtein(a: &[char], b: &[char], cutoff: usize) -> usize {
     let (n, m) = (a.len(), b.len());
     if n == 0 {

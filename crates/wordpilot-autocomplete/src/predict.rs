@@ -1,4 +1,4 @@
-//! Next-word prediction, as an interface (spec §6).
+//! Next-word prediction, as an interface.
 //!
 //! The core must not depend on KenLM or any particular n-gram library, so the
 //! engine talks only to this trait. No statistical model ships in the MVP;
@@ -38,9 +38,9 @@ pub trait ContextPredictor: Send + Sync {
 
 /// A predictor that knows nothing.
 ///
-/// Deliberately not a fabricated hardcoded table of German prepositions: the
-/// spec asks for this to come from n-grams or user statistics, not from a list
-/// baked into the binary (spec §7).
+/// Deliberately not a fabricated hardcoded table of German prepositions: predictions
+/// should come from n-grams or user statistics, not from a list baked into the
+/// binary.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoContextPredictor;
 

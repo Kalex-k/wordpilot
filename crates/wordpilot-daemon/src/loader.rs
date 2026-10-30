@@ -1,6 +1,6 @@
 //! Startup loading of dictionaries and frequency lists.
 //!
-//! Everything here happens once (spec §36). A language that fails to load is
+//! Everything here happens once. A language that fails to load is
 //! logged and skipped rather than aborting the daemon: English autocomplete is
 //! still worth having when the German dictionary is missing.
 
@@ -55,8 +55,7 @@ pub fn load_languages(config: &Config) -> LoadOutcome {
 ///
 /// A database that fails to open (corrupted file, unwritable directory) is
 /// logged and swapped for [`NoPersonalDictionary`] rather than aborting the
-/// daemon: basic dictionary completion must keep working regardless
-/// (spec §44).
+/// daemon: basic dictionary completion must keep working regardless.
 pub fn load_personal_dictionary(config: &Config) -> Arc<dyn PersonalVocabulary> {
     if !config.privacy.learning_enabled {
         tracing::info!("personal learning is disabled in config");

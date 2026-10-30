@@ -8,7 +8,7 @@
 //! matter most for German completion -- `Erfahrung` and `Bewerbung` exist in
 //! igerman98 only as affix products of `Erfahren` and `bewerben`.
 //!
-//! Not supported, and therefore not pretended (spec §60):
+//! Not supported, and therefore not pretended:
 //!
 //! - **Compounding.** `COMPOUNDRULE` and friends are ignored, so an ad-hoc
 //!   German compound such as `Berufserfahrung` is found only if the
@@ -40,7 +40,7 @@ use crate::spell;
 /// offsets, where a `Vec<(String, String)>` of the same words would cost well
 /// over 100 MB in pointers and allocator overhead. Lookup is a binary search
 /// followed by a linear walk of the matching range, with no allocation and no
-/// disk access per keystroke (spec §36).
+/// disk access per keystroke.
 pub struct HunspellDictionary {
     language: Language,
     dic_path: PathBuf,

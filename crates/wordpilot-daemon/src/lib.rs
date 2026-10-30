@@ -1,8 +1,8 @@
-//! The WordPilot daemon (spec §22).
+//! The WordPilot daemon.
 //!
 //! Owns the engines and serves the Unix socket. Subsystems are loosely
 //! coupled on purpose: a missing dictionary, an unavailable LanguageTool or a
-//! dead AI provider each degrade only their own feature (spec §44).
+//! dead AI provider each degrade only their own feature.
 
 pub mod client;
 pub mod loader;

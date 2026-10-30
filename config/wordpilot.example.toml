@@ -4,6 +4,13 @@
 # ~/.config/wordpilot/config.toml). Every value below is the built-in default,
 # so an absent config file behaves exactly like this one. Unknown keys are a
 # hard error rather than being silently ignored, which catches typos.
+#
+# Edits apply while everything runs: the daemon re-reads this file within a
+# second of it changing (or on `wordpilot reload` / SIGHUP), and the Fcitx
+# addon fetches its part (hotkeys, limits, blacklist) from the daemon within
+# two seconds. A file that fails to parse is rejected and the previous
+# settings stay in effect; `journalctl --user -u wordpilot` shows why.
+# Exceptions that need a daemon restart: general.socket_path, logging.level.
 
 [general]
 # Language used when detection is off or inconclusive: "de", "en" or "en-GB".
@@ -13,6 +20,8 @@ default_language = "de"
 auto_language_detection = true
 # Socket path. Commented out means $XDG_RUNTIME_DIR/wordpilot/daemon.sock,
 # which is correct on any normal systemd system. Do not point this at /tmp.
+# If you change it, Fcitx must be started with WORDPILOT_SOCKET set to the
+# same path, because the addon cannot read this file. Restart required.
 # socket_path = "/run/user/1000/wordpilot/daemon.sock"
 
 [autocomplete]
@@ -22,8 +31,8 @@ max_candidates = 5
 # Prefixes shorter than this produce nothing, so the popup does not flash on
 # the first keystroke of every word.
 min_prefix_length = 2
-# Frontend debounce in milliseconds. Keep this small; the engine itself needs
-# well under a millisecond.
+# Reserved, currently unused: the Fcitx addon asks the daemon synchronously on
+# every keystroke (well under a millisecond), so there is nothing to debounce.
 debounce_ms = 25
 # Offer spelling corrections when a prefix matches no word at all. Corrections
 # are reported as a distinct source and are never applied automatically.
@@ -45,8 +54,9 @@ prefix_quality_weight = 0.15
 recency_half_life_secs = 604800.0
 
 [dictionaries]
-# Languages loaded at startup. Loading is the only expensive step, so keep
-# this to the languages you actually type.
+# Languages loaded at startup. Loading is the only expensive step (about a
+# second), so keep this to the languages you actually type. Changing anything
+# in this section re-reads the dictionaries on reload; nothing else does.
 languages = ["de", "en"]
 # Extra directories searched before the XDG and system defaults
 # (~/.local/share/wordpilot/dictionaries, /usr/share/hunspell,
@@ -68,7 +78,9 @@ sensitive_field_detection = true
 
 [applications]
 # WordPilot is completely inactive in these. Matched case-insensitively
-# against the process or desktop-file name the input method reports.
+# against the program name Fcitx reports for the window (`fcitx5-diagnose`
+# lists it per input context). Applications connected through plain XIM may
+# report no name, and then cannot be matched.
 disabled = [
     "keepassxc",
     "org.keepassxc.KeePassXC",
@@ -77,6 +89,8 @@ disabled = [
 ]
 
 [grammar]
+# Not implemented yet: grammar requests are answered with "unsupported".
+# The settings are accepted so a config written today keeps working.
 enabled = true
 provider = "languagetool"
 # A local LanguageTool server. Nothing is sent anywhere else.
@@ -84,7 +98,7 @@ endpoint = "http://127.0.0.1:8081"
 timeout_ms = 2000
 
 [ai]
-# Remote AI is opt-in. Off by default.
+# Not implemented yet (see [grammar]). Remote AI is opt-in. Off by default.
 enabled = false
 provider = "openai-compatible"
 # Any OpenAI-compatible server: Ollama, llama.cpp, LM Studio, or a remote API.
@@ -98,13 +112,21 @@ timeout_ms = 30000
 max_context_chars = 1000
 
 [hotkeys]
-# Handled by the Fcitx addon, not by the daemon.
+# Handled by the Fcitx addon, which receives them from the daemon. Written as
+# modifiers joined with "+" and a key: Ctrl/Control, Alt, Shift, Super/Win;
+# a letter, F1-F12, Space, Tab, Enter, Escape, ... or any X keysym name.
+# An empty string disables a hotkey. The language hotkeys work whichever
+# Fcitx input method is active.
+# The AI hotkey is reserved: AI actions are not implemented yet.
 ai = "Ctrl+Alt+Space"
 language_german = "Super+Alt+D"
 language_english = "Super+Alt+E"
 language_auto = "Super+Alt+A"
 
 [logging]
+# error, warn, info, debug, trace, or a tracing filter such as
+# "info,wordpilot_dictionary=debug". RUST_LOG overrides it. Restart required.
 level = "info"
-# Logs what you type. A debugging escape hatch; leave this off.
+# Reserved debugging switch for logging typed text. Nothing logs text in this
+# version; turning it on only prints a warning at startup. Leave it off.
 log_user_text = false

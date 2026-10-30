@@ -1,8 +1,8 @@
 //! The personal-learning signal, as an interface.
 //!
-//! The SQLite implementation lives in the storage crate (spec §5, Phase 1D).
+//! The SQLite implementation lives in the storage crate.
 //! The engine only needs these three numbers, so it does not link SQLite and
-//! keeps working when the personal database is missing or corrupt (spec §44).
+//! keeps working when the personal database is missing or corrupt.
 
 use wordpilot_core::Language;
 
@@ -27,7 +27,7 @@ pub trait PersonalVocabulary: Send + Sync {
     /// system dictionary -- `Kubernetes`, `rusqlite`, a surname.
     fn complete(&self, prefix: &str, language: Language, limit: usize) -> Vec<String>;
 
-    /// Records that the user accepted `word` (spec §39).
+    /// Records that the user accepted `word`.
     ///
     /// Takes `&self` because implementations serialise internally; a learning
     /// write must never require an exclusive borrow on the keystroke path.
@@ -40,7 +40,7 @@ pub trait PersonalVocabulary: Send + Sync {
 /// Used when learning is disabled or the database is unavailable.
 ///
 /// Not a stub for unfinished work: "no personal dictionary" is a supported
-/// configuration (spec §5, §28).
+/// configuration.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoPersonalDictionary;
 
